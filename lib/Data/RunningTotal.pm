@@ -10,7 +10,7 @@ use Data::RunningTotal::Item;
 require Exporter;
 
 our @ISA = qw(Exporter);
-our $VERSION = '0.02';
+our $VERSION = '0.03';
 
 # Create a new Running Total object
 sub new {
@@ -581,6 +581,13 @@ any specified time.
                                 period => 10,
                                 coords => [undef, sub {$_[0] =~ /^P[12]$/}, undef]);
 
+  # Get all P3 and P4 priorities across all time at max granularity
+  my $list2 = $rt->getChangeList(coords => [undef, sub {$_[0] =~ /^P[34]$/}, undef]);
+
+  # Put the two preceding lists into a single list - note that they
+  # don't need to have the same time contraints
+  my $comblist = $rt->getChangeList($list, $list2);
+
 
 =head1 DESCRIPTION
 
@@ -746,8 +753,6 @@ The entry will have the form: C<[time, list1Val, list2Val, ...]>.
 
 A convenient was to use it is (using the bug example again):
 
-=begin text
-
    my $combList = 
      $rt->combineChangeList(
        $rt->getChangeList(undef, "P1", undef),
@@ -755,8 +760,6 @@ A convenient was to use it is (using the bug example again):
        $rt->getChangeList(undef, "P3", undef),
        $rt->getChangeList(undef, "P4", undef),
        $rt->getChangeList(undef, "P5", undef));
-
-=end text
 
 The preceding example would give a single list in which each entry
 has a count for a different priority.
