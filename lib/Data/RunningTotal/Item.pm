@@ -9,7 +9,7 @@ require Exporter;
 
 our @ISA = qw(Exporter);
 
-our $VERSION = '0.01';
+our $VERSION = '0.02';
 
 
 sub new {
@@ -33,6 +33,12 @@ sub moveTo {
   croak("Expected an array ref for parameter 'coords'") if (ref($opts{coords}) ne "ARRAY");
   if (scalar(@{$opts{coords}}) != $self->{rt}->{numDims}) {
     croak("Expected $self->{numDims} coordinates, but ".scalar(@{$opts{coords}})." given");
+  }
+
+  if (defined($self->{lastTime}) &&
+      $time < $self->{lastTime}) {
+    carp("Item can't be moved to time in the past.  Previous time moved: $self->{lastTime}.  Current movement time: $time");
+    return;
   }
 
   if (defined($self->{lastCoords})) {

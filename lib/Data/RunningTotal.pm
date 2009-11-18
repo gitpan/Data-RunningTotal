@@ -10,7 +10,7 @@ use Data::RunningTotal::Item;
 require Exporter;
 
 our @ISA = qw(Exporter);
-our $VERSION = '0.01';
+our $VERSION = '0.02';
 
 # Create a new Running Total object
 sub new {
@@ -124,6 +124,44 @@ sub getChangeList {
 
 }
 
+# Pass in N change lists and it will combine them into a single 
+# changelist with a time value and N following values
+sub combineChangeList {
+  my ($self, @lists) = @_;
+
+  my @res;
+
+  my $numLists = scalar(@lists);
+  my @listIdxs;
+  my @lastVals;
+  for my $i (0 .. $numLists-1) {
+    $listIdxs[$i] = 0;
+    $lastVals[$i] = 0;
+  }
+
+  while(1) {
+    my $minTime = $lists[0][$listIdxs[0]][0];
+    for my $i (1 .. $numLists-1) {
+      my $listTime = $lists[$i][$listIdxs[$i]][0];
+      $minTime = $listTime if !defined $minTime || defined $listTime && $listTime < $minTime;
+    }
+
+    last if !defined $minTime;
+    
+    for my $i (0 .. $numLists-1) {
+      my $listTime = $lists[$i][$listIdxs[$i]][0];
+      if (defined $listTime && $listTime == $minTime) {
+        $lastVals[$i] = $lists[$i][$listIdxs[$i]][1];
+        $listIdxs[$i]++;
+      }
+    }
+    push(@res, [$minTime, @lastVals]);
+  }
+
+  return \@res;
+
+}
+
 
 ######################################################################
 ## Private Methods
@@ -231,9 +269,12 @@ sub _getEligibleCoords {
     }
     elsif (!defined $coordSels[$i]) {
       # An undefined coordidate selector behaves like a wildcard
-      foreach my $coord (keys(%{$self->{dimIdxs}[$i]})) {
-        push(@elig, $coord);
-      }
+      # foreach my $coord (keys(%{$self->{dimIdxs}[$i]})) {
+      #   push(@elig, $coord);
+      # }
+      push(@res, undef);
+      $permutations *= scalar(keys(%{$self->{dimIdxs}[$i]}));
+      next;
     }
     elsif (defined $self->{dimIdxs}[$i]{$coordSels[$i]}) {
       push(@elig, $coordSels[$i]);
@@ -260,7 +301,11 @@ sub _getDimArrays {
 
   my @res;
   for my $i (0 .. $self->{numDims}-1) {
-    if (scalar(@{$eligibleCoords->[$i]}) > 1) {
+    if (!defined $eligibleCoords->[$i]) {
+      # Do nothing - this indicates that all coordinates should be
+      # included, which is what will happen if we don't include any
+    }
+    elsif (scalar(@{$eligibleCoords->[$i]}) > 1) {
       my @coordList;
       foreach my $coord (@{$eligibleCoords->[$i]}) {
         my $list = $self->{dimIdxs}[$i]{$coord};
@@ -288,6 +333,14 @@ sub _getDimArrays {
     
   }
   
+  # Special case - if all the selectors were undef, then there
+  # will be no dimension arrays on the result list.  Create
+  # a single list that contains all the indices
+  if (scalar(@res) == 0) {
+    my @allIndices = (0..$lastIdx);
+    push(@res, \@allIndices);
+  }
+  
   return \@res;
 
 }                 
@@ -295,7 +348,7 @@ sub _getDimArrays {
 sub _getValueWalkingBackwards {
   my ($self, $dimArrays, $numPermutations) = @_;
   my $sum = 0;
-  my $nDims = $self->{numDims};
+  my $nDims = scalar(@{$dimArrays});
   my $dimBound = $nDims-1;
   my %blackList;
   my $permsFound = 0;
@@ -346,7 +399,7 @@ sub _getValueWalkingBackwards {
 sub _getListWalkingForwards {
   my ($self, $dimArrays, $period, $start, $end) = @_;
   my $currSum = 0;
-  my $nDims = $self->{numDims};
+  my $nDims = scalar(@{$dimArrays});
   my $dimBound = $nDims-1;
   my @res;
 
@@ -379,6 +432,7 @@ sub _getListWalkingForwards {
     }
 
     if ($allTheSame) {
+      last mainLoop if defined($end) && $self->{counts}[$currMax][0] > $end;
       $currSum -= $self->{counts}[$self->{counts}[$currMax][2]][1] if defined $self->{counts}[$currMax][2];
       $currSum += $self->{counts}[$currMax][1];
       _addToPeriodicList(\@res, $period, $self->{counts}[$currMax][0], $currSum);
@@ -484,8 +538,8 @@ any specified time.
 
   use Data::RunningTotal;
 
-  # Create a running total across 3 dimensions: owner, milestone and product
-  my $rt = Data::RunningTotal->new(dimensions => ["owner", "milestone", "product"]);
+  # Create a running total across 3 dimensions: owner, priority and product
+  my $rt = Data::RunningTotal->new(dimensions => ["owner", "priority", "product"]);
 
   ## Simple interface
   my $time = 1;
@@ -493,12 +547,12 @@ any specified time.
   # increment the specified point by weight
   $rt->inc($time++, 
            weight => $weight, 
-           coords => ["bob", "milestone1", "infinite improbablity generator"]);
+           coords => ["bob", "P1", "infinite improbablity generator"]);
 
   # decrement the specified point by weight
   $rt->dec($time++, 
            weight => $weight, 
-           coords => ["sam", "milestone2", "genuine people personalities"]);
+           coords => ["sam", "P2", "genuine people personalities"]);
 
   ## Item based interface
 
@@ -506,26 +560,26 @@ any specified time.
   my $item = $rt->newItem(weight => $weight);
 
   # Shuffle this item around within the specified coordinates
-  $item->moveTo($time++, coords => ["bob", "milestone1", "infinite improbability generator"]);
-  $item->moveTo($time++, coords => ["sam", "milestone1", "infinite improbability generator"]);
-  $item->moveTo($time++, coords => ["sam", "milestone2", "infinite improbability generator"]);
+  $item->moveTo($time++, coords => ["bob", "P1", "infinite improbability generator"]);
+  $item->moveTo($time++, coords => ["sam", "P1", "infinite improbability generator"]);
+  $item->moveTo($time++, coords => ["sam", "P2", "infinite improbability generator"]);
     
-  # Get the number of bugs for "sam", "milestone1", "infinite improbability generator"
+  # Get the number of bugs for "sam", "P1", "infinite improbability generator"
   # at time 4
   my $count = $rt->getValue(4, 
                             coords => ["sam", 
-                                       "milestone2", 
+                                       "P2", 
                                        "infinite improbability generator"]);
 
   # Get the number of bugs for "sam" at time 10 (undef is a wildcard)
   $count = $rt->getValue(10, coords => ["sam", undef, undef]);
 
-  # Get the list of count changes over time for milestones 1 and 2, between
+  # Get the list of count changes over time for priorities 1 and 2, between
   # time 0 and 100, inclusive, but only on 10 time-unit intervals
   my $list = $rt->getChangeList(start => 0,
                                 end   => 100,
                                 period => 10,
-                                coords => [undef, sub {$_[0] =~ /^milestone[12]$/}, undef]);
+                                coords => [undef, sub {$_[0] =~ /^P[12]$/}, undef]);
 
 
 =head1 DESCRIPTION
@@ -551,10 +605,10 @@ volume (or point).  For example, daily counts for priority 1 bugs of a period of
 months can be extracted in order to generate a bug graph.
 
 The following statement would get a list of changes to the volume that 
-contains all bugs owned by all users, targetted for milestone2 for all products.
+contains all bugs owned by all users, with priority P2 for all products.
 If it wasn't clear, undef means all values in that dimension.
 
-C< my @levelChanges = $rt-E<gt>getChangeList(coords = > [undef, "milestone2", undef]); >
+C< my @levelChanges = $rt-E<gt>getChangeList(coords = > [undef, "P2", undef]); >
 
 Each entry in the returned list is an array ref that contains
 [time, value], with the time being the time that the total of all items
@@ -660,15 +714,17 @@ undef (for all coords in this dimension) or an anonymous sub
 that will be called within each possible coordidate in that
 dimension.
 
-C< coords =E<gt> [<coord|undef|sub{...}, ...] >
+C< coords =E<gt> [E<gt>coord|undef|sub{...}E<lt>, ...] >
 
 =item start
 
-Specifies the starting time for the list.
+Specifies the starting time for the list.  If not specified
+the list will start with the earliest relevent event.
 
 =item end 
 
-Specifies the ending time for the list.
+Specifies the ending time for the list.  If not specified
+the list will continue to the last relevent event.
 
 =item period
 
@@ -677,6 +733,34 @@ For example, if you enter events using seconds, you could set period to 3600*24
 to get a value for each day.
 
 =back
+
+
+=head2 combineChangeList
+
+C< my $combList = $rt-E<gt>combineChangeList($list1, $list2, ...);>
+
+This method takes a many lists in the form that are returned from 
+getChangeList and merges them into a single list.  That single list
+will have an entry for each distinct time from all the specified lists.
+The entry will have the form: C<[time, list1Val, list2Val, ...]>.
+
+A convenient was to use it is (using the bug example again):
+
+=begin text
+
+   my $combList = 
+     $rt->combineChangeList(
+       $rt->getChangeList(undef, "P1", undef),
+       $rt->getChangeList(undef, "P2", undef),
+       $rt->getChangeList(undef, "P3", undef),
+       $rt->getChangeList(undef, "P4", undef),
+       $rt->getChangeList(undef, "P5", undef));
+
+=end text
+
+The preceding example would give a single list in which each entry
+has a count for a different priority.
+
 
 =head2 newItem
 
@@ -703,6 +787,10 @@ $item-E<gt>moveTo($time, %options);
 
 Subtract the item's weight from its current location and move it
 to the specified new point, where its weight will be added.
+
+A MAJOR limitation of this command is that movements must occur in 
+ascending time order.  In other words, you can't move to a point in 
+the past.
 
 Options:
 

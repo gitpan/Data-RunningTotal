@@ -4,7 +4,7 @@
 #########################
 
 # change 'tests => 1' to 'tests => last_test_to_print';
-use Test::More tests => 28;
+use Test::More tests => 29;
 BEGIN { use_ok('Data::RunningTotal') };
 
 #########################
@@ -73,6 +73,13 @@ is_deeply($list, [[10,1],[11,2],[12,3],[13,4],[14,5],[20,4]], "checking \"open\"
 
 $list = $rt->getChangeList(coords => ["open", undef, undef, "script"]);
 is_deeply($list, [[40,1],[50,2],[60,3]], "checking \"script\"");
+
+# Test combineChangeList
+my $comb = $rt->combineChangeList($rt->getChangeList(coords => ["open", "P1", undef, undef]),
+                                  $rt->getChangeList(coords => ["open", "P2", undef, undef]));
+is_deeply($comb, [[11,1,0],[12,1,1],[30,0,1]], "checking combineChangeList");
+
+                                  
 
 
 1;
